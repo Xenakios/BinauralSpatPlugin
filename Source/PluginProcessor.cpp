@@ -23,7 +23,12 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 	m_output_format.channelLayoutType = IPL_CHANNELLAYOUTTYPE_SPEAKERS;
 	m_output_format.channelLayout = IPL_CHANNELLAYOUT_STEREO;
 	m_output_format.channelOrder = IPL_CHANNELORDER_INTERLEAVED;
-
+	m_par_x = new AudioParameterFloat("x", "X pos", -1.0, 1.0, 0.0);
+	addParameter(m_par_x);
+	m_par_y = new AudioParameterFloat("y", "Y pos", -1.0, 1.0, 0.0);
+	addParameter(m_par_y);
+	m_par_z = new AudioParameterFloat("z", "Z pos", -1.0, 1.0, 0.0);
+	addParameter(m_par_z);
 }
 
 BinauralSpatAudioProcessor::~BinauralSpatAudioProcessor()
@@ -161,11 +166,11 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
 				m_procinbuf[i] = m_cb.get();
 			IPLAudioBuffer inbuffer{ m_input_format, m_procgran, m_procinbuf.data() };
 			IPLAudioBuffer outbuffer{ m_output_format, m_procgran, m_procoutbuf.data() };
-
+			IPLVector3 posvec{ *m_par_x,*m_par_y,*m_par_z };
 			iplApplyBinauralEffect(m_saeffect,
 				inbuffer,
-				IPLVector3{ 1.0f, 1.0f, 1.0f },
-				IPL_HRTFINTERPOLATION_NEAREST,
+				posvec,
+				IPL_HRTFINTERPOLATION_BILINEAR,
 				outbuffer);
 			inbuffer.interleavedBuffer += m_procgran;
 

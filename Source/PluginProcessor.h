@@ -142,5 +142,8 @@ private:
 	CircularBuffer<float> m_cb{ 16384 };
 	CircularBuffer<float> m_cbout{ 16384 };
 	int m_procgran = 128;
+	AudioParameterFloat* m_par_x = nullptr;
+	AudioParameterFloat* m_par_y = nullptr;
+	AudioParameterFloat* m_par_z = nullptr;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BinauralSpatAudioProcessor)
 };
