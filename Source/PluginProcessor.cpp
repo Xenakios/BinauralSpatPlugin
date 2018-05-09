@@ -102,6 +102,7 @@ void BinauralSpatAudioProcessor::changeProgramName (int index, const String& new
 //==============================================================================
 void BinauralSpatAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+	ScopedLock locker(m_cs);
 	m_sasettings = { (int)sampleRate,m_procgran };
 	iplCreateBinauralRenderer(m_sacontext, m_sasettings, m_sahrtfParams, &m_sarenderer);
 	iplCreateBinauralEffect(m_sarenderer, m_input_format, m_output_format, &m_saeffect);
@@ -144,7 +145,8 @@ bool BinauralSpatAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 
 void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
-    ScopedNoDenormals noDenormals;
+	ScopedLock locker(m_cs);
+	ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
