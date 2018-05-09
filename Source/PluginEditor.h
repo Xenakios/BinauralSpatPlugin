@@ -16,7 +16,7 @@
 //==============================================================================
 /**
 */
-class BinauralSpatAudioProcessorEditor  : public AudioProcessorEditor
+class BinauralSpatAudioProcessorEditor  : public AudioProcessorEditor, public Timer
 {
 public:
     BinauralSpatAudioProcessorEditor (BinauralSpatAudioProcessor&);
@@ -25,7 +25,7 @@ public:
     //==============================================================================
     void paint (Graphics&) override;
     void resized() override;
-
+	void timerCallback() override;
 private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.

@@ -18,6 +18,7 @@ BinauralSpatAudioProcessorEditor::BinauralSpatAudioProcessorEditor (BinauralSpat
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
     setSize (400, 300);
+	startTimer(20);
 }
 
 BinauralSpatAudioProcessorEditor::~BinauralSpatAudioProcessorEditor()
@@ -32,11 +33,19 @@ void BinauralSpatAudioProcessorEditor::paint (Graphics& g)
 
     g.setColour (Colours::white);
     g.setFont (15.0f);
-    g.drawFittedText ("Hello World!", getLocalBounds(), Justification::centred, 1);
+	int inavail;
+	int outavail;
+	processor.ringBufferInfo(inavail, outavail);
+	g.drawFittedText (String(inavail)+" "+String(outavail), getLocalBounds(), Justification::centred, 1);
 }
 
 void BinauralSpatAudioProcessorEditor::resized()
 {
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
+}
+
+void BinauralSpatAudioProcessorEditor::timerCallback()
+{
+	repaint();
 }

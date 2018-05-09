@@ -128,7 +128,7 @@ public:
     //==============================================================================
     void getStateInformation (MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
-
+	void ringBufferInfo(int& inavail, int& outavail);
 private:
 	IPLhandle m_sacontext{ nullptr };
 	IPLRenderingSettings m_sasettings;
