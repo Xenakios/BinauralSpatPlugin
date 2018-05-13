@@ -172,6 +172,7 @@ bool BinauralSpatAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
 	ScopedLock locker(m_cs);
+	ScopedLock locker2(*m_audio_cs);
 	ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
