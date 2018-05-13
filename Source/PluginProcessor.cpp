@@ -33,15 +33,15 @@ String getPluginDllDirectoryPath()
 }
 
 template<typename F>
-inline void initFuncs(DynamicLibrary* dll, const String& funcname, F& funcptr)
+inline void initFuncs(DynamicLibrary& dll, const String& funcname, F& funcptr)
 {
-	*((void **)&funcptr) = dll->getFunction(funcname);
+	*((void **)&funcptr) = dll.getFunction(funcname);
 }
 
 template<typename F, typename... Ts>
-inline void initFuncs(DynamicLibrary* dll, const String& funcname, F& funcptr, Ts&&... args)
+inline void initFuncs(DynamicLibrary& dll, const String& funcname, F& funcptr, Ts&&... args)
 {
-	*((void **)&funcptr) = dll->getFunction(funcname);
+	*((void **)&funcptr) = dll.getFunction(funcname);
 	initFuncs(dll, args...);
 }
 
@@ -53,7 +53,7 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 		String dllfn = getPluginDllDirectoryPath() + "/phonon.dll";
 		g_steamdll = new DynamicLibrary(dllfn);
 		++g_dllcount;
-		initFuncs(g_steamdll, "iplCreateContext", _iplCreateContext, "iplCreateBinauralRenderer", _iplCreateBinauralRenderer,
+		initFuncs(*g_steamdll, "iplCreateContext", _iplCreateContext, "iplCreateBinauralRenderer", _iplCreateBinauralRenderer,
 			"iplCreateBinauralEffect",_iplCreateBinauralEffect,"iplDestroyContext",_iplDestroyContext,
 			"iplDestroyBinauralEffect",_iplDestroyBinauralEffect,"iplDestroyBinauralRenderer",_iplDestroyBinauralRenderer,
 			"iplApplyBinauralEffect",_iplApplyBinauralEffect);
