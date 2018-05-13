@@ -11,10 +11,49 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+IPLerror (*_iplCreateContext)(IPLLogFunction logCallback,
+	IPLAllocateFunction allocateCallback,
+	IPLFreeFunction freeCallback,
+	IPLhandle* context);
+IPLvoid (*_iplDestroyContext)(IPLhandle* context);
+IPLerror (*_iplCreateBinauralRenderer)(IPLhandle context, IPLRenderingSettings renderingSettings,
+	IPLHrtfParams params, IPLhandle* renderer);
+IPLerror (*_iplCreateBinauralEffect)(IPLhandle renderer, IPLAudioFormat inputFormat,
+	IPLAudioFormat outputFormat, IPLhandle* effect);
+IPLvoid (*_iplDestroyBinauralEffect)(IPLhandle* effect);
+IPLvoid (*_iplDestroyBinauralRenderer)(IPLhandle* renderer);
+IPLvoid (*_iplApplyBinauralEffect)(IPLhandle effect, IPLAudioBuffer inputAudio, IPLVector3 direction,
+	IPLHrtfInterpolation interpolation, IPLAudioBuffer outputAudio);
+DynamicLibrary* g_steamdll = nullptr;
+int g_dllcount = 0;
+
+String getPluginDllDirectoryPath()
+{
+	return File::getSpecialLocation(File::SpecialLocationType::currentExecutableFile).getParentDirectory().getFullPathName();
+}
+
+void initFunc(DynamicLibrary* lib, String funcname, void* funcptr)
+{
+	*((void **)&funcptr) = lib->getFunction(funcname);
+}
+
 //==============================================================================
 BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 {
-	iplCreateContext(nullptr, nullptr, nullptr, &m_sacontext);
+	if (g_steamdll == nullptr)
+	{
+		String dllfn = getPluginDllDirectoryPath() + "/phonon.dll";
+		g_steamdll = new DynamicLibrary(dllfn);
+		++g_dllcount;
+		*((void **)&_iplCreateContext) = g_steamdll->getFunction("iplCreateContext");
+		*((void **)&_iplCreateBinauralRenderer) = g_steamdll->getFunction("iplCreateBinauralRenderer");
+		*((void **)&_iplCreateBinauralEffect) = g_steamdll->getFunction("iplCreateBinauralEffect");
+		*((void **)&_iplDestroyContext) = g_steamdll->getFunction("iplDestroyContext");
+		*((void **)&_iplDestroyBinauralEffect) = g_steamdll->getFunction("iplDestroyBinauralEffect");
+		*((void **)&_iplDestroyBinauralRenderer) = g_steamdll->getFunction("iplDestroyBinauralRenderer");
+		*((void **)&_iplApplyBinauralEffect) = g_steamdll->getFunction("iplApplyBinauralEffect");
+	}
+	_iplCreateContext(nullptr, nullptr, nullptr, &m_sacontext);
 	memset(&m_input_format, 0, sizeof(IPLAudioFormat));
 	memset(&m_output_format, 0, sizeof(IPLAudioFormat));
 	m_input_format.channelLayoutType = IPL_CHANNELLAYOUTTYPE_SPEAKERS;
@@ -33,8 +72,13 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 
 BinauralSpatAudioProcessor::~BinauralSpatAudioProcessor()
 {
-	iplDestroyContext(&m_sacontext);
-
+	_iplDestroyContext(&m_sacontext);
+	--g_dllcount;
+	if (g_dllcount == 0)
+	{
+		delete g_steamdll;
+		g_steamdll = nullptr;
+	}
 }
 
 //==============================================================================
@@ -104,8 +148,8 @@ void BinauralSpatAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 {
 	ScopedLock locker(m_cs);
 	m_sasettings = { (int)sampleRate,m_procgran };
-	iplCreateBinauralRenderer(m_sacontext, m_sasettings, m_sahrtfParams, &m_sarenderer);
-	iplCreateBinauralEffect(m_sarenderer, m_input_format, m_output_format, &m_saeffect);
+	_iplCreateBinauralRenderer(m_sacontext, m_sasettings, m_sahrtfParams, &m_sarenderer);
+	_iplCreateBinauralEffect(m_sarenderer, m_input_format, m_output_format, &m_saeffect);
 	m_cb.clear();
 	m_cbout.clear();
 	m_procinbuf.resize(samplesPerBlock);
@@ -114,9 +158,8 @@ void BinauralSpatAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 
 void BinauralSpatAudioProcessor::releaseResources()
 {
-	iplDestroyBinauralEffect(&m_saeffect);
-	iplDestroyBinauralRenderer(&m_sarenderer);
-
+	_iplDestroyBinauralEffect(&m_saeffect);
+	_iplDestroyBinauralRenderer(&m_sarenderer);
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -163,7 +206,7 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
 			IPLAudioBuffer inbuffer{ m_input_format, m_procgran, m_procinbuf.data() };
 			IPLAudioBuffer outbuffer{ m_output_format, m_procgran, m_procoutbuf.data() };
 			IPLVector3 posvec{ *m_par_x,*m_par_y,*m_par_z };
-			iplApplyBinauralEffect(m_saeffect,
+			_iplApplyBinauralEffect(m_saeffect,
 				inbuffer,
 				posvec,
 				IPL_HRTFINTERPOLATION_BILINEAR,
