@@ -172,7 +172,6 @@ bool BinauralSpatAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
 	ScopedLock locker(m_cs);
-	ScopedLock locker2(*m_audio_cs);
 	ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
@@ -185,6 +184,7 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
 	{
 		while (m_cbout.available() < 2*buffer.getNumSamples())
 		{
+			m_audio_cs->enter();
 			for (int i = 0; i < m_procgran; ++i)
 				m_procinbuf[i] = m_cb.get();
 			IPLAudioBuffer inbuffer{ m_input_format, m_procgran, m_procinbuf.data() };
@@ -201,6 +201,7 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
 			{
 				m_cbout.push(m_procoutbuf[i]);
 			}
+			m_audio_cs->exit();
 		}
 	}
 	if (m_cbout.available() >= 2*buffer.getNumSamples())
