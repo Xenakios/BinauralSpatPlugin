@@ -53,7 +53,7 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 		String dllfn = getPluginDllDirectoryPath() + "/phonon.dll";
 		g_steamdll = new DynamicLibrary(dllfn);
 		++g_dllcount;
-		initFuncs(*g_steamdll, "iplCreateContext", _iplCreateContext, "iplCreateBinauralRenderer", _iplCreateBinauralRenderer,
+		g_steamdll->initFunctions("iplCreateContext", _iplCreateContext, "iplCreateBinauralRenderer", _iplCreateBinauralRenderer,
 			"iplCreateBinauralEffect",_iplCreateBinauralEffect,"iplDestroyContext",_iplDestroyContext,
 			"iplDestroyBinauralEffect",_iplDestroyBinauralEffect,"iplDestroyBinauralRenderer",_iplDestroyBinauralRenderer,
 			"iplApplyBinauralEffect",_iplApplyBinauralEffect);
