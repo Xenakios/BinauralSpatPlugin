@@ -146,5 +146,6 @@ private:
 	AudioParameterFloat* m_par_y = nullptr;
 	AudioParameterFloat* m_par_z = nullptr;
 	CriticalSection m_cs;
+	SharedResourcePointer<DynamicLibrary> m_steamdll;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BinauralSpatAudioProcessor)
 };

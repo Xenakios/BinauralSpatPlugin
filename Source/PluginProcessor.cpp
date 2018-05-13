@@ -24,8 +24,6 @@ IPLvoid (*_iplDestroyBinauralEffect)(IPLhandle* effect);
 IPLvoid (*_iplDestroyBinauralRenderer)(IPLhandle* renderer);
 IPLvoid (*_iplApplyBinauralEffect)(IPLhandle effect, IPLAudioBuffer inputAudio, IPLVector3 direction,
 	IPLHrtfInterpolation interpolation, IPLAudioBuffer outputAudio);
-DynamicLibrary* g_steamdll = nullptr;
-int g_dllcount = 0;
 
 String getPluginDllDirectoryPath()
 {
@@ -48,12 +46,11 @@ inline void initFuncs(DynamicLibrary& dll, const String& funcname, F& funcptr, T
 //==============================================================================
 BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 {
-	if (g_steamdll == nullptr)
+	if (m_steamdll->getNativeHandle() == nullptr)
 	{
 		String dllfn = getPluginDllDirectoryPath() + "/phonon.dll";
-		g_steamdll = new DynamicLibrary(dllfn);
-		++g_dllcount;
-		g_steamdll->initFunctions("iplCreateContext", _iplCreateContext, "iplCreateBinauralRenderer", _iplCreateBinauralRenderer,
+		m_steamdll->open(dllfn);
+		m_steamdll->initFunctions("iplCreateContext", _iplCreateContext, "iplCreateBinauralRenderer", _iplCreateBinauralRenderer,
 			"iplCreateBinauralEffect",_iplCreateBinauralEffect,"iplDestroyContext",_iplDestroyContext,
 			"iplDestroyBinauralEffect",_iplDestroyBinauralEffect,"iplDestroyBinauralRenderer",_iplDestroyBinauralRenderer,
 			"iplApplyBinauralEffect",_iplApplyBinauralEffect);
@@ -78,12 +75,6 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 BinauralSpatAudioProcessor::~BinauralSpatAudioProcessor()
 {
 	_iplDestroyContext(&m_sacontext);
-	--g_dllcount;
-	if (g_dllcount == 0)
-	{
-		delete g_steamdll;
-		g_steamdll = nullptr;
-	}
 }
 
 //==============================================================================
