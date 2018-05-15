@@ -19,6 +19,13 @@ BinauralSpatAudioProcessorEditor::BinauralSpatAudioProcessorEditor (BinauralSpat
     // editor's size to whatever you need it to be.
     setSize (400, 300);
 	startTimer(20);
+	m_xpos0 = processor.m_state.getParameterAsValue("pos0x");
+	m_xpos0.addListener(this);
+	m_ypos0 = processor.m_state.getParameterAsValue("pos0y");
+	m_ypos0.addListener(this);
+	m_zpos0 = processor.m_state.getParameterAsValue("pos0z");
+	m_zpos0.addListener(this);
+
 }
 
 BinauralSpatAudioProcessorEditor::~BinauralSpatAudioProcessorEditor()
@@ -28,16 +35,13 @@ BinauralSpatAudioProcessorEditor::~BinauralSpatAudioProcessorEditor()
 //==============================================================================
 void BinauralSpatAudioProcessorEditor::paint (Graphics& g)
 {
-    // (Our component is opaque, so we must completely fill the background with a solid colour)
-    g.fillAll (getLookAndFeel().findColour (ResizableWindow::backgroundColourId));
-
-    g.setColour (Colours::white);
-    g.setFont (15.0f);
-	int inavail;
-	int outavail;
-	processor.ringBufferInfo(inavail, outavail);
-	float pos0x = *processor.m_state.getRawParameterValue("pos0x");
-	g.drawFittedText (String(pos0x,2)+" "+String(inavail)+" "+String(outavail), getLocalBounds(), Justification::centred, 1);
+	g.fillAll(Colours::black);
+	g.setColour(Colours::white);
+	float xcor = jmap<float>(m_xpos0.getValue(), -1.0, 1.0, 0.0, getWidth());
+	float ycor = jmap<float>(m_ypos0.getValue(), -1.0, 1.0, 0.0, getHeight());
+	float zsize = jmap<float>(m_zpos0.getValue(), -1.0, 1.0, 1.0, 50.0);
+	g.fillEllipse(xcor-zsize/2.0, ycor-zsize/2.0, zsize, zsize);
+	g.drawText(String(m_valuechangecount), 10, 10, 100, 50, Justification::centred);
 }
 
 void BinauralSpatAudioProcessorEditor::resized()
@@ -48,5 +52,28 @@ void BinauralSpatAudioProcessorEditor::resized()
 
 void BinauralSpatAudioProcessorEditor::timerCallback()
 {
+	//repaint();
+}
+
+void BinauralSpatAudioProcessorEditor::valueChanged(Value & value)
+{
+	++m_valuechangecount;
 	repaint();
+}
+
+void BinauralSpatAudioProcessorEditor::mouseDrag(const MouseEvent & ev)
+{
+	float zsize = jmap<float>(m_zpos0.getValue(), -1.0, 1.0, 1.0, 50.0);
+	m_xpos0 = jlimit<float>(-1.0,1.0, jmap<float>(ev.x, 0.0, getWidth(), -1.0, 1.0));
+	m_ypos0 = jlimit<float>(-1.0,1.0, jmap<float>(ev.y, 0.0, getHeight(), -1.0, 1.0));
+}
+
+void BinauralSpatAudioProcessorEditor::mouseWheelMove(const MouseEvent & ev, const MouseWheelDetails & det)
+{
+	float curval = m_zpos0.getValue();
+	if (det.deltaY < 0.0)
+		curval -= 0.05f;
+	if (det.deltaY > 0.0)
+		curval += 0.05f;
+	m_zpos0 = jlimit(-1.0f, 1.0f, curval);
 }
