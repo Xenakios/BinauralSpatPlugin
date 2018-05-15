@@ -36,7 +36,8 @@ void BinauralSpatAudioProcessorEditor::paint (Graphics& g)
 	int inavail;
 	int outavail;
 	processor.ringBufferInfo(inavail, outavail);
-	g.drawFittedText (String(inavail)+" "+String(outavail), getLocalBounds(), Justification::centred, 1);
+	float pos0x = *processor.m_state.getRawParameterValue("pos0x");
+	g.drawFittedText (String(pos0x,2)+" "+String(inavail)+" "+String(outavail), getLocalBounds(), Justification::centred, 1);
 }
 
 void BinauralSpatAudioProcessorEditor::resized()

@@ -129,6 +129,7 @@ public:
     void getStateInformation (MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 	void ringBufferInfo(int& inavail, int& outavail);
+	AudioProcessorValueTreeState m_state;
 private:
 	IPLhandle m_sacontext{ nullptr };
 	IPLRenderingSettings m_sasettings;
@@ -142,9 +143,7 @@ private:
 	CircularBuffer<float> m_cb{ 16384 };
 	CircularBuffer<float> m_cbout{ 16384 };
 	int m_procgran = 128;
-	AudioParameterFloat* m_par_x = nullptr;
-	AudioParameterFloat* m_par_y = nullptr;
-	AudioParameterFloat* m_par_z = nullptr;
+	
 	CriticalSection m_cs;
 	SharedResourcePointer<DynamicLibrary> m_steamdll;
 	SharedResourcePointer<CriticalSection> m_audio_cs; // Steam Audio API is not threadsafe, so need to have this shared mutex for plugin instances... :-/

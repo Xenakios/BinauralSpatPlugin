@@ -31,7 +31,7 @@ String getPluginDllDirectoryPath()
 }
 
 //==============================================================================
-BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
+BinauralSpatAudioProcessor::BinauralSpatAudioProcessor() : m_state(*this,nullptr)
 {
 	if (m_steamdll->getNativeHandle() == nullptr)
 	{
@@ -51,12 +51,33 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor()
 	m_output_format.channelLayoutType = IPL_CHANNELLAYOUTTYPE_SPEAKERS;
 	m_output_format.channelLayout = IPL_CHANNELLAYOUT_STEREO;
 	m_output_format.channelOrder = IPL_CHANNELORDER_INTERLEAVED;
-	m_par_x = new AudioParameterFloat("x", "X pos", -1.0, 1.0, 0.0);
-	addParameter(m_par_x);
-	m_par_y = new AudioParameterFloat("y", "Y pos", -1.0, 1.0, 0.0);
-	addParameter(m_par_y);
-	m_par_z = new AudioParameterFloat("z", "Z pos", -1.0, 1.0, 0.0);
-	addParameter(m_par_z);
+	
+	auto posRange = NormalisableRange<float>{ -1.0f,1.0f };
+	auto posToTextFunc = [posRange](float v) { return String(v, 2); };
+	auto textToPosFunc = [posRange](const String& t) { return t.getFloatValue(); };
+	
+	m_state.createAndAddParameter("pos0x",       // parameter ID
+		"Input 1 X pos",       // parameter name
+		String(),     // parameter label (suffix)
+		posRange,
+		0.0f,         // default value
+		posToTextFunc,
+		textToPosFunc);
+	m_state.createAndAddParameter("pos0y",       // parameter ID
+		"Input 1 Y pos",       // parameter name
+		String(),     // parameter label (suffix)
+		posRange,
+		0.0f,         // default value
+		posToTextFunc,
+		textToPosFunc);
+	m_state.createAndAddParameter("pos0z",       // parameter ID
+		"Input 1 Z pos",       // parameter name
+		String(),     // parameter label (suffix)
+		posRange,
+		0.0f,         // default value
+		posToTextFunc,
+		textToPosFunc);
+	m_state.state = ValueTree(Identifier("binspatstate"));
 }
 
 BinauralSpatAudioProcessor::~BinauralSpatAudioProcessor()
@@ -176,7 +197,11 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+	float posx0 = *m_state.getRawParameterValue("pos0x");
+	float posy0 = *m_state.getRawParameterValue("pos0y");
+	float posz0 = *m_state.getRawParameterValue("pos0z");
+
+	for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 	for (int i = 0; i < buffer.getNumSamples(); ++i)
 		m_cb.push(buffer.getSample(0, i));
@@ -189,7 +214,7 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
 				m_procinbuf[i] = m_cb.get();
 			IPLAudioBuffer inbuffer{ m_input_format, m_procgran, m_procinbuf.data() };
 			IPLAudioBuffer outbuffer{ m_output_format, m_procgran, m_procoutbuf.data() };
-			IPLVector3 posvec{ *m_par_x,*m_par_y,*m_par_z };
+			IPLVector3 posvec{ posx0,posy0,posz0 };
 			_iplApplyBinauralEffect(m_saeffect,
 				inbuffer,
 				posvec,
@@ -229,15 +254,17 @@ AudioProcessorEditor* BinauralSpatAudioProcessor::createEditor()
 //==============================================================================
 void BinauralSpatAudioProcessor::getStateInformation (MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+	MemoryOutputStream stream(destData, true);
+	m_state.state.writeToStream(stream);
 }
 
 void BinauralSpatAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+	ValueTree state = ValueTree::readFromData(data, sizeInBytes);
+	if (state.isValid())
+	{
+		m_state.replaceState(state);
+	}
 }
 
 void BinauralSpatAudioProcessor::ringBufferInfo(int & inavail, int & outavail)
