@@ -53,6 +53,7 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor() : m_state(*this,nullptr
 	m_output_format.channelOrder = IPL_CHANNELORDER_INTERLEAVED;
 	
 	auto posRange = NormalisableRange<float>{ -1.0f,1.0f };
+	
 	auto posToTextFunc = [posRange](float v) { return String(v, 2); };
 	auto textToPosFunc = [posRange](const String& t) { return t.getFloatValue(); };
 	
@@ -189,6 +190,11 @@ bool BinauralSpatAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
   #endif
 }
 #endif
+
+inline double distance(double x0, double x1)
+{
+	return fabs(x0 - x1);
+}
 
 void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
