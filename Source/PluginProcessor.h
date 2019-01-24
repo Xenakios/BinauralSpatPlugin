@@ -135,7 +135,7 @@ private:
 	IPLRenderingSettings m_sasettings;
 	IPLhandle m_sarenderer{ nullptr };
 	IPLhandle m_saeffect{ nullptr };
-	IPLHrtfParams m_sahrtfParams{ IPL_HRTFDATABASETYPE_DEFAULT, nullptr, 0, nullptr, nullptr, nullptr };
+	IPLHrtfParams m_sahrtfParams{ IPL_HRTFDATABASETYPE_DEFAULT, nullptr, ""};
 	IPLAudioFormat m_input_format;
 	IPLAudioFormat m_output_format;
 	std::vector<float> m_procinbuf;
