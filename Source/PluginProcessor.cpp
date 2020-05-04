@@ -232,8 +232,6 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
         buffer.clear (i, 0, buffer.getNumSamples());
 	for (int i = 0; i < buffer.getNumSamples(); ++i)
 		m_cb.push(buffer.getSample(0, i));
-	//AudioDataConverters::interleaveSamples(buffer.getArrayOfWritePointers(), m_procoutbuf.data(), 512, 2);
-	//AudioDataConverters::deinterleaveSamples((const float*)m_procinbuf.data(), buffer.getArrayOfWritePointers(), 512, 2);
 	if (m_cb.available() >= buffer.getNumSamples()+m_procgran)
 	{
 		while (m_cbout.available() < 2*buffer.getNumSamples())
