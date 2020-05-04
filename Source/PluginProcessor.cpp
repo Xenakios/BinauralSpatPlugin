@@ -22,13 +22,28 @@ IPLerror (*_iplCreateBinauralEffect)(IPLhandle renderer, IPLAudioFormat inputFor
 	IPLAudioFormat outputFormat, IPLhandle* effect);
 IPLvoid (*_iplDestroyBinauralEffect)(IPLhandle* effect);
 IPLvoid (*_iplDestroyBinauralRenderer)(IPLhandle* renderer);
-IPLvoid (*_iplApplyBinauralEffect)(IPLhandle effect, IPLAudioBuffer inputAudio, IPLVector3 direction,
-	IPLHrtfInterpolation interpolation, IPLAudioBuffer outputAudio);
+IPLvoid (*_iplApplyBinauralEffect)(IPLhandle effect, IPLhandle binauralRenderer, 
+	IPLAudioBuffer inputAudio, IPLVector3 direction,
+	IPLHrtfInterpolation interpolation, IPLfloat32 spatialBlend, IPLAudioBuffer outputAudio);
+
+/*
+
+IPLAPI IPLvoid iplApplyBinauralEffect(IPLhandle effect,
+										  IPLhandle binauralRenderer,
+										  IPLAudioBuffer inputAudio,
+										  IPLVector3 direction,
+										  IPLHrtfInterpolation interpolation,
+										  IPLfloat32 spatialBlend,
+										  IPLAudioBuffer outputAudio);
+
+*/
 
 String getPluginDllDirectoryPath()
 {
 	return File::getSpecialLocation(File::SpecialLocationType::currentExecutableFile).getParentDirectory().getFullPathName();
 }
+
+
 
 //==============================================================================
 BinauralSpatAudioProcessor::BinauralSpatAudioProcessor() : m_state(*this,nullptr)
@@ -41,8 +56,12 @@ BinauralSpatAudioProcessor::BinauralSpatAudioProcessor() : m_state(*this,nullptr
 			"iplCreateBinauralEffect",_iplCreateBinauralEffect,"iplDestroyContext",_iplDestroyContext,
 			"iplDestroyBinauralEffect",_iplDestroyBinauralEffect,"iplDestroyBinauralRenderer",_iplDestroyBinauralRenderer,
 			"iplApplyBinauralEffect",_iplApplyBinauralEffect);
+		jassert(_iplCreateContext != nullptr);
+		jassert(_iplCreateBinauralRenderer != nullptr);
+		jassert(_iplApplyBinauralEffect != nullptr);
 	}
 	_iplCreateContext(nullptr, nullptr, nullptr, &m_sacontext);
+	jassert(m_sacontext != nullptr);
 	memset(&m_input_format, 0, sizeof(IPLAudioFormat));
 	memset(&m_output_format, 0, sizeof(IPLAudioFormat));
 	m_input_format.channelLayoutType = IPL_CHANNELLAYOUTTYPE_SPEAKERS;
@@ -154,7 +173,9 @@ void BinauralSpatAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 	ScopedLock locker(m_cs);
 	m_sasettings = { (int)sampleRate,m_procgran };
 	_iplCreateBinauralRenderer(m_sacontext, m_sasettings, m_sahrtfParams, &m_sarenderer);
+	jassert(m_sarenderer != nullptr);
 	_iplCreateBinauralEffect(m_sarenderer, m_input_format, m_output_format, &m_saeffect);
+	jassert(m_saeffect != nullptr);
 	m_cb.clear();
 	m_cbout.clear();
 	m_procinbuf.resize(samplesPerBlock);
@@ -211,20 +232,23 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
         buffer.clear (i, 0, buffer.getNumSamples());
 	for (int i = 0; i < buffer.getNumSamples(); ++i)
 		m_cb.push(buffer.getSample(0, i));
+	//AudioDataConverters::interleaveSamples(buffer.getArrayOfWritePointers(), m_procoutbuf.data(), 512, 2);
+	//AudioDataConverters::deinterleaveSamples((const float*)m_procinbuf.data(), buffer.getArrayOfWritePointers(), 512, 2);
 	if (m_cb.available() >= buffer.getNumSamples()+m_procgran)
 	{
 		while (m_cbout.available() < 2*buffer.getNumSamples())
 		{
-			m_audio_cs->enter();
+			//m_audio_cs->enter();
 			for (int i = 0; i < m_procgran; ++i)
 				m_procinbuf[i] = m_cb.get();
 			IPLAudioBuffer inbuffer{ m_input_format, m_procgran, m_procinbuf.data() };
 			IPLAudioBuffer outbuffer{ m_output_format, m_procgran, m_procoutbuf.data() };
 			IPLVector3 posvec{ posx0,posy0,posz0 };
-			_iplApplyBinauralEffect(m_saeffect,
+			_iplApplyBinauralEffect(m_saeffect, m_sarenderer,
 				inbuffer,
 				posvec,
 				IPL_HRTFINTERPOLATION_BILINEAR,
+				0.5f,
 				outbuffer);
 			inbuffer.interleavedBuffer += m_procgran;
 
@@ -232,7 +256,7 @@ void BinauralSpatAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiB
 			{
 				m_cbout.push(m_procoutbuf[i]);
 			}
-			m_audio_cs->exit();
+			//m_audio_cs->exit();
 		}
 	}
 	if (m_cbout.available() >= 2*buffer.getNumSamples())

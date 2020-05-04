@@ -146,6 +146,6 @@ private:
 	
 	CriticalSection m_cs;
 	SharedResourcePointer<DynamicLibrary> m_steamdll;
-	SharedResourcePointer<CriticalSection> m_audio_cs; // Steam Audio API is not threadsafe, so need to have this shared mutex for plugin instances... :-/
+	//SharedResourcePointer<CriticalSection> m_audio_cs; // Steam Audio API is not threadsafe, so need to have this shared mutex for plugin instances... :-/
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BinauralSpatAudioProcessor)
 };

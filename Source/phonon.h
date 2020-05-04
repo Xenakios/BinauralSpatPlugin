@@ -151,29 +151,12 @@ extern "C" {
         IPLfloat32 z;   /**< The z-coordinate. */
     } IPLVector3;
 
-    /** A unit-length quaternion. Quaternions are used to represent a rotation or orientation.
-     */
-    typedef struct {
-        IPLfloat32 x;   /**< The x-coordinate of the vector part. */
-        IPLfloat32 y;   /**< The y-coordinate of the vector part. */
-        IPLfloat32 z;   /**< The z-coordinate of the vector part. */
-        IPLfloat32 w;   /**< The scalar part. */
-    } IPLQuaternion;
-
     /** An axis-aligned box. Axis-aligned boxes are used to specify a volume of 3D space.
      */
     typedef struct {
         IPLVector3  minCoordinates; /**< The minimum coordinates of any vertex. */
         IPLVector3  maxCoordinates; /**< The maximum coordinates of any vertex. */
     } IPLBox;
-
-    /** An oriented box. Oriented boxes are used to specify a volume of 3D space.
-    */
-    typedef struct {
-        IPLVector3     mCenter;        /**< The center of the box. */
-        IPLVector3     mExtents;       /**< The extents of the box. */
-        IPLQuaternion  mRotation;      /**< The rotation of the box. */
-    } IPLOrientedBox;
 
     /** A sphere. Spheres are used to define a region of influence around a point.
      */
@@ -228,12 +211,45 @@ extern "C" {
      *	\c iplCreateComputeDevice.
      */
     typedef struct {
-        IPLComputeDeviceType    type;                   /**< The type of device to use. */
-        IPLbool                 requiresTrueAudioNext;  /**< Whether the device must support AMD TrueAudio Next. */
-        IPLint32                minReservableCUs;       /**< The minimum number of CUs that should be possible to
-                                                             reserve on the device, for TrueAudio Next. */
-        IPLint32                maxCUsToReserve;        /**< The maximum number of CUs that the application needs to
-                                                             reserve on the device, for TrueAudio Next. */
+        IPLComputeDeviceType    type;                      /**< The type of device to use. */
+        IPLint32                maxCUsToReserve;           /**< The maximum number of GPU compute units (CUs) that the 
+                                                             application will reserve on the device. When set to zero, 
+                                                             resource reservation is disabled and the entire GPU is used.*/
+        IPLfloat32              fractionCUsForIRUpdate;    /**< Fraction of maximum reserved CUs that should be used 
+                                                             for impulse response (IR) update. The IR update includes 
+                                                             any simulation performed by Radeon Rays to calculate IR and/or
+                                                             pre-transformation of the IR for convolution with input audio.
+                                                             The remaining reserved CUs are used for convolution.
+                                                             Below are typical scenarios: 
+
+                                                             - <b>Using only AMD TrueAudio Next with Steam Audio.</b>
+                                                             Set \c fractionCUsForIRUpdate to a value greater than 0 and less
+                                                             than 1 in this case. This ensures that reserved CUs are
+                                                             available for IR update as well as convolution. For example,
+                                                             setting \c maxCUsToReserve to 8 and \c fractionCUsForIRUpdate 
+                                                             to .5 will use 4 reserved CUs for convolution and 4 reserved
+                                                             CUs to pre-transform IR calculated on CPU or GPU. 
+
+                                                             - <b>Using AMD TrueAudio Next and AMD Radeon Rays with Steam Audio.</b>
+                                                             Choosing \c fractionCUsForIRUpdate may require some experimentation 
+                                                             to utilize reserved CUs optimally. For example, setting
+                                                             \c maxCUsToReserve to 8 and \c fractionCUsForIRUpdate to .5 will use
+                                                             4 reserved CUs for convolution and 4 reserved CUs for IR update.
+                                                             However, if IR calculation has high latency with these settings, 
+                                                             you may want to increase \c fractionCUsForIRUpdate to devote
+                                                             additional reserved CUs for IR update.
+
+                                                             - <b>Using only AMD Radeon Rays with Steam Audio.</b>
+                                                             Set \c fractionCUsForIRUpdate to 1 to make sure all the 
+                                                             reserved CUs are used for calculating IRs using Radeon Rays 
+                                                             and pre-transforming the calculated IRs.
+
+                                                             If the number of reserved CUs assigned for convolution or IR
+                                                             update are 0, then the entire GPU minus the reserved CUs are 
+                                                             used for the corresponding calculations. For example,
+                                                             if \c maxCUsToReserve is set to 8 and \c fractionCUsForIRUpdate 
+                                                             is set to 0 then all the reserved CUs are used for convolution and
+                                                             the rest of the GPU is used for IR update.*/
     } IPLComputeDeviceFilter;
 
     /** Creates a Compute Device object. The same Compute Device must be used by the game engine and audio engine
@@ -306,7 +322,12 @@ extern "C" {
      */
     typedef struct {
         IPLSceneType        sceneType;              /**< The ray tracer to use for simulation. \see IPLSceneType. */
-        IPLint32            numOcclusionSamples;
+        IPLint32            maxNumOcclusionSamples; /**< The maximum number of rays to trace from the listener to a 
+                                                         source when simulating volumetric occlusion. Increasing this 
+                                                         number allows increased smoothness of occlusion transitions, 
+                                                         but also increases memory consumption. Any positive integer 
+                                                         may be specified, but typical values are in the range of 32 to 
+                                                         512. */
         IPLint32            numRays;                /**< The number of rays to trace from the listener. Increasing this
                                                          number increases the accuracy of the simulation, but also
                                                          increases CPU usage. Any positive integer may be specified,
@@ -348,6 +369,12 @@ extern "C" {
                                                          1 unless you are creating a Scene for the purposes of
                                                          baking indirect sound using \c iplBakeReverb,
                                                          \c iplBakePropagation, or \c iplBakeStaticListener. */
+        IPLfloat32          irradianceMinDistance;  /**< The minimum distance between a source and a scene surface,
+                                                         used when calculating the energy received at the surface from
+                                                         the source during indirect sound simulation. Increasing this
+                                                         number reduces the loudness of reflections when standing
+                                                         close to a wall; decreasing this number results in a more
+                                                         physically realistic model. */
     } IPLSimulationSettings;
 
     /** \} */
@@ -542,7 +569,7 @@ extern "C" {
      *  \param  context             The Context object used by the game engine.
      *  \param  computeDevice       Handle to a Compute Device object. Only required if using Radeon Rays for
      *                              ray tracing, may be \c NULL otherwise.
-     *  \param  simulationSettings  The settings to use for simulation.
+     *  \param  sceneType           The ray tracer to use for scene representation and simulation.
      *  \param  numMaterials        The number of materials that are used to describe the various surfaces in
      *                              the scene. Materials may not be added or removed once the Scene object is
      *                              created.
@@ -564,7 +591,7 @@ extern "C" {
      *  \return Status code indicating whether or not the operation succeeded.
      */
     IPLAPI IPLerror iplCreateScene(IPLhandle context, IPLhandle computeDevice, 
-                                   IPLSimulationSettings simulationSettings, IPLint32 numMaterials, 
+                                   IPLSceneType sceneType, IPLint32 numMaterials, 
                                    IPLMaterial* materials, IPLClosestHitCallback closestHitCallback, 
                                    IPLAnyHitCallback anyHitCallback, 
                                    IPLBatchedClosestHitCallback batchedClosestHitCallback,
@@ -628,11 +655,7 @@ extern "C" {
     /** Creates a Scene object based on data stored in a byte array.
      *
      *  \param  context             The Context object used by the game engine.
-     *  \param  simulationSettings  The settings to use for the simulation. This must exactly match the settings
-     *                              that were used to create the original Scene object that was passed to
-     *                              \c ::iplSaveScene, except for the \c sceneType and \c simulationType
-     *                              data members. This allows you to use the same file to create a Scene object
-     *                              that uses any ray tracer you prefer.
+     *  \param  sceneType           The ray tracer to use for scene representation and simulation.
      *  \param  data                Byte array containing the serialized representation of the Scene object. Must
      *                              not be \c NULL.
      *  \param  size                Size (in bytes) of the serialized data.
@@ -644,7 +667,7 @@ extern "C" {
      *
      *  \return Status code indicating whether or not the operation succeeded.
      */
-    IPLAPI IPLerror iplLoadScene(IPLhandle context, IPLSimulationSettings simulationSettings,
+    IPLAPI IPLerror iplLoadScene(IPLhandle context, IPLSceneType sceneType,
         IPLbyte* data, IPLint32 size, IPLhandle computeDevice, IPLLoadSceneProgressCallback progressCallback, IPLhandle* scene);
 
     /** Saves a Scene object to an OBJ file. An OBJ file is a widely-supported 3D model file format, that can be
@@ -656,6 +679,80 @@ extern "C" {
      *  \param  fileBaseName        Absolute or relative path to the OBJ file to generate.
      */
     IPLAPI IPLvoid iplSaveSceneAsObj(IPLhandle scene, IPLstring fileBaseName);
+
+    /** A 4x4 matrix used to represent an affine transform. The matrix elements are stored in row-major order.
+     */
+    typedef struct {
+        float elements[4][4];   /**< The elements of the matrix, in row-major order. */
+    } IPLMatrix4x4;
+
+    /** Creates an Instanced Mesh object. An Instanced Mesh takes one scene and positions it within another scene.
+     *  This is useful if you have the same object, like a pillar, that you want to instantiate multiple times within
+     *  the same scene. A scene can be instantiated multiple times within another scene, without incurring any significant
+     *  memory overhead. The Instanced Mesh can be moved, rotated, and scaled freely at any time, providing an easy way to
+     *  implement dynamic objects whose motion can be described purely in terms of rigid-body transformations.
+     *
+     *  \param  scene               The scene in which to instantiate another scene.
+     *  \param  instancedScene      The scene to instantiate.
+     *  \param  transform           A transform matrix that maps from the coordinate space of \c instancedScene to the
+     *                              coordinate space of \c scene. This is used to position and orient \c instancedScene
+     *                              within \c scene. This parameter specifies the initial value of the transform; it can be
+     *                              freely changed once the Instanced Mesh is created, using 
+     *                              \c iplUpdateInstancedMeshTransform.
+     *  \param  instancedMesh       [out] Handle to the created Instanced Mesh object.
+     *
+     *  \return Status code indicating whether or not the operation succeeded.
+     */
+    IPLAPI IPLerror iplCreateInstancedMesh(IPLhandle scene,
+                                           IPLhandle instancedScene,
+                                           IPLMatrix4x4 transform,
+                                           IPLhandle* instancedMesh);
+
+    /** Destroys an Instanced Mesh object. If any other API objects are still referencing the Instanced Mesh object,
+     *  it will not be destroyed; destruction occurs when the object's reference count reaches zero.
+     *
+     *  \param  instancedMesh       [in, out] Address of a handle to the Instanced Mesh object to destroy.
+     */
+    IPLAPI void iplDestroyInstancedMesh(IPLhandle* instancedMesh);
+
+    /** Adds an Instanced Mesh object to a Scene object. This function should be called after \c iplCreateInstancedMesh, or
+     *  at any point after calling \c iplRemoveInstancedMesh, for the Instanced Mesh to start affecting sound
+     *  propagation.
+     *
+     *  \param  scene               The Scene to which to add the Instanced Mesh. This must be the Scene which was passed
+     *                              as the \c scene parameter when calling \c iplCreateInstancedMesh to create the
+     *                              Instanced Mesh.
+     *  \param  instancedMesh       The Instanced Mesh to add to the Scene.
+     */
+    IPLAPI void iplAddInstancedMesh(IPLhandle scene,
+                                    IPLhandle instancedMesh);
+
+    /** Removes an Instanced Mesh object from a Scene object. After this function is called, the Instanced Mesh will stop
+     *  affecting sound propagation, until a subsequent call to \c iplAddInstancedMesh.
+     *
+     *  \param  scene               The Scene from which to remove the Instanced Mesh.
+     *  \param  instancedMesh       The Instanced Mesh to remove from the Scene.
+     */
+    IPLAPI void iplRemoveInstancedMesh(IPLhandle scene,
+                                       IPLhandle instancedMesh);
+
+    /** Updates the local-to-world transform of an Instanced Mesh within a Scene. This function allows the Instanced
+     *  Mesh to be moved, rotated, and scaled dynamically. After calling this function, you must call
+     *  \c iplCommitScene for the changes to take effect.
+     *
+     *  \param  instancedMesh       The Instanced Mesh whose transform is to be updated.
+     *  \param  transform           The new 4x4 transform matrix.
+     */
+    IPLAPI void iplUpdateInstancedMeshTransform(IPLhandle instancedMesh,
+                                                IPLMatrix4x4 transform);
+
+    /** Commits a series of changes to Instanced Meshes in a Scene. This function should be called after any calls to
+     *  \c iplUpdateInstancedMeshTransform for the changes to take effect. For best performance, call this function after
+     *  all transforms have been updated for a given frame.
+     *
+     *  \param  scene               The Scene to commit changes to.
+     */
+    IPLAPI void iplCommitScene(IPLhandle scene);
 
     /** \} */
 
@@ -977,10 +1074,10 @@ extern "C" {
      *  rotate an Ambisonics-encoded audio buffer, or the resulting audio will be incorrect.
      *
      *  \param  rotator             Handle to an Ambisonics Rotator object.
-     *  \param  quaternion          A unit quaternion describing the 3D transformation from world space to listener
-     *                              space coordinates.
+     *  \param  listenerAhead       Unit vector pointing in the direction in which the listener is looking.
+     *  \param  listenerUp          Unit vector pointing upwards from the listener.
      */
-    IPLAPI IPLvoid iplSetAmbisonicsRotation(IPLhandle rotator, IPLQuaternion quaternion);
+    IPLAPI IPLvoid iplSetAmbisonicsRotation(IPLhandle rotator, IPLVector3 listenerAhead, IPLVector3 listenerUp);
 
     /** Rotates an Ambisonics-encoded audio buffer. The \c ::iplSetAmbisonicsRotation function must have been called
      *  prior to calling this function, or the resulting audio will be incorrect. It is possible to pass the same
@@ -1192,16 +1289,31 @@ extern "C" {
      *  \param  interpolation       The interpolation technique to use when rendering a point source at a location
      *                              that is not contained in the measured HRTF data used by Phonon. **If using a custom
      *                              HRTF database, this value must be set to IPL_HRTFINTERPOLATION_BILINEAR.**
+     *  \param  spatialBlend        Amount to blend inputAudio with spatialized audio. When set to 0, outputAudio is not
+     *                              spatialized at all and is close to inputAudio. If set to 1, outputAudio is fully
+     *                              spatialized.
      *  \param  outputAudio         Audio buffer that should contain the rendered audio data. The format of this
      *                              buffer must match the \c outputFormat parameter passed to
      *                              \c ::iplCreateBinauralEffect.
      */
-    IPLAPI IPLvoid iplApplyBinauralEffect(IPLhandle effect, IPLhandle binauralRenderer, IPLAudioBuffer inputAudio, IPLVector3 direction,
-        IPLHrtfInterpolation interpolation, IPLAudioBuffer outputAudio);
+    IPLAPI IPLvoid iplApplyBinauralEffect(IPLhandle effect,
+                                          IPLhandle binauralRenderer,
+                                          IPLAudioBuffer inputAudio,
+                                          IPLVector3 direction,
+                                          IPLHrtfInterpolation interpolation,
+                                          IPLfloat32 spatialBlend,
+                                          IPLAudioBuffer outputAudio);
 
-    IPLAPI IPLvoid iplApplyBinauralEffectWithParameters(IPLhandle effect, IPLhandle binauralRenderer, IPLAudioBuffer inputAudio,
-        IPLVector3 direction, IPLHrtfInterpolation interpolation, IPLAudioBuffer outputAudio, IPLfloat32* leftDelay,
-        IPLfloat32* rightDelay);
+    IPLAPI IPLvoid iplApplyBinauralEffectWithParameters(IPLhandle effect, 
+                                                        IPLhandle binauralRenderer,
+                                                        IPLAudioBuffer inputAudio,
+                                                        IPLVector3 direction,
+                                                        IPLHrtfInterpolation interpolation,
+                                                        IPLbool enableSpatialBlend,
+                                                        IPLfloat32 spatialBlend,
+                                                        IPLAudioBuffer outputAudio, 
+                                                        IPLfloat32* leftDelay,
+                                                        IPLfloat32* rightDelay);
 
     /** Resets any internal state maintained by an Object-Based Binaural Effect object. This is useful if the 
      *  Object-Based Binaural Effect object is going to be disabled/unused for a few frames; resetting the internal 
@@ -1507,6 +1619,112 @@ extern "C" {
      *  \{
      */
 
+    /** The kind of distance attenuation model to use when calculating frequency-independent distance attenuation
+     *  along a path from the source to the listener.
+     */
+    typedef enum {
+        IPL_DISTANCEATTENUATION_DEFAULT,            /**< The default distance attenuation model. Same as
+                                                         \c IPL_DISTANCEATTENUATION_INVERSEDISTANCE with
+                                                         \c minDistance = 1. */
+        IPL_DISTANCEATTENUATION_INVERSEDISTANCE,    /**< A physically-based inverse-distance attenuation
+                                                         model. The attenuated amplitude of a source is
+                                                         1 / max(\c distance, \c minDistance), where
+                                                         \c distance is the length of the path from the
+                                                         source to the listener, and \c minDistance is a
+                                                         parameter (see \c IPLDistanceAttenuationModel). */
+        IPL_DISTANCEATTENUATION_CALLBACK            /**< A user-specified distance attenuation model that uses
+                                                         a callback function whenever the distance attenuation
+                                                         value needs to be calculated. */
+    } IPLDistanceAttenuationModelType;
+
+    /** Callback function that is called when the distance attenuation needs to be evaluated for a given distance.
+        This function may be called many times when simulating indirect sound, and should not perform any long,
+        blocking operations.
+
+        \param  distance        Length of the path from the source to the listener.
+        \param  userData        User-specified data that was specified via \c IPLDistanceAttenuationModel.
+
+        \return Amplitude of the sound after distance attenuation. Typically between 0.0 and 1.0.
+     */
+    typedef float (*IPLDistanceAttenuationCallback)(float distance,
+                                                    void* userData);
+
+    /** A distance attenuation model for use when calculating frequency-independent distance attenuation along a
+     *  path from the source to the listener.
+     */
+    typedef struct {
+        IPLDistanceAttenuationModelType type;           /**< The type of distance attenuation model to use. */
+        IPLfloat32                      minDistance;    /**< The minimum distance parameter for the model. Only
+                                                             used if \c type is 
+                                                             \c IPL_DISTANCEATTENUATION_INVERSEDISTANCE. */
+        IPLDistanceAttenuationCallback  callback;       /**< The callback function to call when evaluating
+                                                             distance attenuation. Only used if \c type is
+                                                             \c IPL_DISTANCEATTENUATION_CALLBACK. */
+        void*                           userData;       /**< User-specified data that should be passed to the callback 
+                                                             function when it is called. Use this to pass in any 
+                                                             source-specific data that must be known to the 
+                                                             callback function. Only used if \c type is
+                                                             \c IPL_DISTANCEATTENUATION_CALLBACK. */
+        IPLbool                         dirty;          /**< Flag indicating whether \c userData has been changed.
+                                                             When \c type is set to \c IPL_DISTANCEATTENUATION_CALLBACK,
+                                                             Steam Audio can avoid repeating some calculations
+                                                             if \c dirty is set to \c false; these calculations are
+                                                             should only be carried out when \c userData changes,
+                                                             in which case \c dirty should be set to \c true. */
+    } IPLDistanceAttenuationModel;
+
+    /** The kind of air absorption model to use when calculating frequency-dependent air absorption along a path from 
+     *  the source to the listener.
+     */
+    typedef enum {
+        IPL_AIRABSORPTION_DEFAULT,      /**< The default air absorption model. Same as
+                                             \c IPL_AIRABSORPTION_EXPONENTIAL with \c coefficients = {0.0002, 0.0017, 
+                                             0.0182}. */
+        IPL_AIRABSORPTION_EXPONENTIAL,  /**< An exponential decay model for air absorption. The attenuated amplitude of
+                                             sound at distance r is exp(-kr), with k being a frequency-dependent
+                                             coefficient. */
+        IPL_AIRABSORPTION_CALLBACK      /**< A user-specified air absorption model that uses a callback function
+                                             whenever the air absorption value needs to be calculated. */
+    } IPLAirAbsorptionModelType;
+
+    /** Callback function that is called when the air absorption needs to be evaluated for a given distance. This
+     *  function may be called many times when simulated indirect sound, and should not perform any long, blocking
+     *  operations.
+     *
+     *  \param  distance        Length of the path from the source to the listener.
+     *  \param  band            Index of the frequency band for which to calculate air absorption.
+     *  \param  userData        User-specified data that was specified via \c IPLAirAbsorptionModel.
+     *
+     *  \return EQ coefficient for the given band after air absorption. Typically between 0.0 and 1.0.
+     */
+    typedef float (*IPLAirAbsorptionCallback)(float distance,
+                                              int band,
+                                              void* userData);
+
+    /** An air absorption model for use when calculating frequency-dependent air absorption along a path from the
+     *  source to the listener.
+     */
+    typedef struct {
+        IPLAirAbsorptionModelType   type;               /**< The type of air absorption model to use. */
+        IPLfloat32                  coefficients[3];    /**< The frequency-dependent exponential decay coefficients.
+                                                             Only used if \c type is 
+                                                             \c IPL_AIRABSORPTION_EXPONENTIAL. */
+        IPLAirAbsorptionCallback    callback;           /**< The callback function to call when evaluating
+                                                             air absorption. Only used if \c type is
+                                                             \c IPL_AIRABSORPTION_CALLBACK. */
+        void*                       userData;           /**< User-specified data that should be passed to the callback 
+                                                             function when it is called. Use this to pass in any 
+                                                             source-specific data that must be known to the 
+                                                             callback function. Only used if \c type is
+                                                             \c IPL_AIRABSORPTION_CALLBACK. */
+        IPLbool                     dirty;              /**< Flag indicating whether \c userData has been changed.
+                                                             When \c type is set to \c IPL_AIRABSORPTION_CALLBACK,
+                                                             Steam Audio can avoid repeating some calculations
+                                                             if \c dirty is set to \c false; these calculations are
+                                                             should only be carried out when \c userData changes,
+                                                             in which case \c dirty should be set to \c true. */
+    } IPLAirAbsorptionModel;
+
     /** The algorithm to use when checking for direct path occlusion. Phonon can check whether a direct sound path is
      *  occluded by scene geometry, and optionally how much of a sound source is occluded.
      */
@@ -1600,11 +1818,13 @@ extern "C" {
     /** Specifies information associated with a sound source.
      */
     typedef struct {
-        IPLVector3      position;       /**< World-space position of the source. */
-        IPLVector3      ahead;          /**< Unit vector pointing forwards from the source. */
-        IPLVector3      up;             /**< Unit vector pointing upwards from the source. */
-        IPLVector3      right;          /**< Unit vector pointing to the right of the source. */
-        IPLDirectivity  directivity;    /**< The source's directivity pattern. */
+        IPLVector3                  position;                   /**< World-space position of the source. */
+        IPLVector3                  ahead;                      /**< Unit vector pointing forwards from the source. */
+        IPLVector3                  up;                         /**< Unit vector pointing upwards from the source. */
+        IPLVector3                  right;                      /**< Unit vector pointing to the right of the source. */
+        IPLDirectivity              directivity;                /**< The source's directivity pattern. */
+        IPLDistanceAttenuationModel distanceAttenuationModel;   /**< The source's distance attenuation model. */
+        IPLAirAbsorptionModel       airAbsorptionModel;         /**< The source's air absorption model. */
     } IPLSource;
 
     /** Calculates direct sound path parameters for a single source. It is up to the audio engine to perform audio
@@ -1617,14 +1837,24 @@ extern "C" {
      *  \param  source              Position, orientation, and directivity of the source.
      *  \param  sourceRadius        Radius of the sphere defined around the source, for use with
      *                              \c ::IPL_DIRECTOCCLUSION_VOLUMETRIC only.
+     *  \param  numSamples          Number of rays to trace, for use with \c ::IPL_DIRECTOCCLUSION_VOLUMETRIC only.
+     *                              Increasing this value results in smoother occlusion, but also increases CPU cost.
+     *                              This value must be a positive integer less than the \c maxNumOcclusionSamples value
+     *                              of the \c IPLSimulationSettings struct passed to \c iplCreateEnvironment.
      *  \param  occlusionMode       Confuguring the occlusion mode for direct path.
      *  \param  occlusionMethod     Algorithm to use for checking for direct path occlusion.
      *
      *  \return Parameters of the direct path from the source to the listener.
      */
-    IPLAPI IPLDirectSoundPath iplGetDirectSoundPath(IPLhandle environment, IPLVector3 listenerPosition,
-        IPLVector3 listenerAhead, IPLVector3 listenerUp, IPLSource source, IPLfloat32 sourceRadius,
-        IPLDirectOcclusionMode occlusionMode, IPLDirectOcclusionMethod occlusionMethod);
+    IPLAPI IPLDirectSoundPath iplGetDirectSoundPath(IPLhandle environment, 
+                                                    IPLVector3 listenerPosition,
+                                                    IPLVector3 listenerAhead, 
+                                                    IPLVector3 listenerUp, 
+                                                    IPLSource source, 
+                                                    IPLfloat32 sourceRadius,
+                                                    IPLint32 numSamples,
+                                                    IPLDirectOcclusionMode occlusionMode,
+                                                    IPLDirectOcclusionMethod occlusionMethod);
 
     /** \} */
 
@@ -1652,19 +1882,21 @@ extern "C" {
 
     /** Creates a Direct Sound Effect object.
      *
-     *  \param  renderer            Handle to an Environmental Renderer object.
      *  \param  inputFormat         The format of the audio buffers that will be passed as input to this effect. All
      *                              subsequent calls to \c ::iplApplyDirectSoundEffect for this effect object must use
      *                              \c IPLAudioBuffer objects with the same format as specified here.
      *  \param  outputFormat        The format of the audio buffers which will be used to retrieve the output from this
      *                              effect. All subsequent calls to \c ::iplApplyDirectSoundEffect for this effect 
      *                              object must use \c IPLAudioBuffer objects with the same format as specified here.
+     *  \param  renderingSettings   An \c IPLRenderingSettings object describing the audio pipeline's DSP processing
+     *                              parameters. These properties must remain constant throughout the lifetime of your
+     *                              application.
      *  \param  effect              [out] Handle to the created Direct Sound Effect object.
      *
      *  \return Status code indicating whether or not the operation succeeded.
      */
-    IPLAPI IPLerror iplCreateDirectSoundEffect(IPLhandle renderer, IPLAudioFormat inputFormat, 
-        IPLAudioFormat outputFormat, IPLhandle* effect);
+    IPLAPI IPLerror iplCreateDirectSoundEffect(IPLAudioFormat inputFormat, IPLAudioFormat outputFormat, 
+        IPLRenderingSettings renderingSettings, IPLhandle* effect);
 
     /** Destroys a Direct Sound Effect object.
      *
@@ -2065,6 +2297,7 @@ extern "C" {
                                          This is suited for all kinds of spaces, and for reverb as well as
                                          source-to-listener propagation. However, it consumes significantly more
                                          memory per probe. */
+        IPLfloat32 irDurationForBake; /**< Must be set to the same value as \c irDuration in \c IPLSimulationSettings. */
     } IPLBakingSettings;
 
     /** A callback that is called to update the application on the progress of the \c ::iplBakeReverb or
